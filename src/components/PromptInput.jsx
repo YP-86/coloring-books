@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react';
+import { motion } from 'framer-motion';
 
 export default function PromptInput({ onGenerate, isLoading }) {
   const [value, setValue] = useState('');
@@ -21,7 +22,11 @@ export default function PromptInput({ onGenerate, isLoading }) {
   };
 
   return (
-    <div>
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5, delay: 0.4 }}
+    >
       <input
         ref={inputRef}
         type="text"
@@ -32,13 +37,15 @@ export default function PromptInput({ onGenerate, isLoading }) {
         onKeyDown={handleKeyDown}
         autoFocus
       />
-      <button
+      <motion.button
         className="btn-generate"
         onClick={handleSubmit}
         disabled={isLoading}
+        whileHover={{ scale: 1.02 }}
+        whileTap={{ scale: 0.97 }}
       >
         {isLoading ? '⏳ Generating...' : '🪄 Generate Coloring Page'}
-      </button>
-    </div>
+      </motion.button>
+    </motion.div>
   );
 }

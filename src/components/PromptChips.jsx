@@ -1,18 +1,39 @@
 import React from 'react';
+import { motion } from 'framer-motion';
 import samplePrompts from '../utils/samplePrompts';
+
+const container = {
+  hidden: {},
+  show: {
+    transition: { staggerChildren: 0.05, delayChildren: 0.6 },
+  },
+};
+
+const item = {
+  hidden: { opacity: 0, y: 10 },
+  show: { opacity: 1, y: 0 },
+};
 
 export default function PromptChips({ onSelect }) {
   return (
-    <div className="chips">
-      {samplePrompts.map((item) => (
-        <button
-          key={item.prompt}
+    <motion.div
+      className="chips"
+      variants={container}
+      initial="hidden"
+      animate="show"
+    >
+      {samplePrompts.map((sp) => (
+        <motion.button
+          key={sp.prompt}
           className="chip"
-          onClick={() => onSelect(item.prompt)}
+          variants={item}
+          whileHover={{ scale: 1.08 }}
+          whileTap={{ scale: 0.94 }}
+          onClick={() => onSelect(sp.prompt)}
         >
-          {item.emoji} {item.label}
-        </button>
+          {sp.emoji} {sp.label}
+        </motion.button>
       ))}
-    </div>
+    </motion.div>
   );
 }

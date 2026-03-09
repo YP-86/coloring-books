@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import { AnimatePresence } from 'framer-motion';
+import AmbientBackground from './components/AmbientBackground';
 import Header from './components/Header';
 import PromptInput from './components/PromptInput';
 import PromptChips from './components/PromptChips';
@@ -19,28 +21,32 @@ export default function App() {
   };
 
   return (
-    <div className="app">
-      <div className="container">
-        <Header />
+    <>
+      <AmbientBackground />
+      <div className="app">
+        <div className="container">
+          <Header />
 
-        <div className="card">
-          <PromptChips onSelect={handleGenerate} />
-          <PromptInput onGenerate={handleGenerate} isLoading={isLoading} />
+          <div className="card">
+            <PromptChips onSelect={handleGenerate} />
+            <PromptInput onGenerate={handleGenerate} isLoading={isLoading} />
+          </div>
+
+          <AnimatePresence mode="wait">
+            {isLoading && <LoadingSpinner key="loading" retryCount={retryCount} />}
+            {error && !isLoading && <ErrorMessage key="error" message={error} />}
+            {imageUrl && !isLoading && !error && (
+              <ResultCard
+                key="result"
+                imageUrl={imageUrl}
+                onRegenerate={() => generate(lastPrompt)}
+              />
+            )}
+          </AnimatePresence>
+
+          <div className="footer">Made with ✨ magic and a sprinkle of AI</div>
         </div>
-
-        {isLoading && <LoadingSpinner retryCount={retryCount} />}
-
-        {error && !isLoading && <ErrorMessage message={error} />}
-
-        {imageUrl && !isLoading && !error && (
-          <ResultCard
-            imageUrl={imageUrl}
-            onRegenerate={() => generate(lastPrompt)}
-          />
-        )}
-
-        <div className="footer">Made with ✨ magic and a sprinkle of AI</div>
       </div>
-    </div>
+    </>
   );
 }
