@@ -428,6 +428,22 @@
             </div>
         </div>
 
+        <div class="card" id="settingsCard">
+            <details id="settingsDetails">
+                <summary style="cursor:pointer;font-weight:700;color:#6b5e8a;font-size:1.05rem;">⚙️ Settings — API Key</summary>
+                <div style="margin-top:16px;">
+                    <p style="color:#6b5e8a;font-size:0.9rem;margin-bottom:12px;">
+                        Enter your free <a href="https://huggingface.co/settings/tokens" target="_blank" style="color:#7c3aed;">Hugging Face token</a> to generate images. It's stored only in your browser — never sent anywhere except Hugging Face.
+                    </p>
+                    <div class="input-group" style="margin-bottom:12px;">
+                        <input type="password" id="tokenInput" placeholder="hf_..." style="font-size:0.95rem;">
+                    </div>
+                    <button class="btn-action" onclick="saveToken()" style="width:100%;">💾 Save Token</button>
+                    <p id="tokenStatus" style="text-align:center;margin-top:8px;font-size:0.85rem;color:#6b5e8a;"></p>
+                </div>
+            </details>
+        </div>
+
         <div class="footer">
             Made with ✨ magic and a sprinkle of AI
         </div>
@@ -440,10 +456,32 @@
         const result = document.getElementById('result');
         const error = document.getElementById('error');
         const coloringImage = document.getElementById('coloringImage');
+        const HF_MODEL = 'https://router.huggingface.co/hf-inference/models/black-forest-labs/FLUX.1-schnell';
 
-        let currentImageUrl = '';
+        let currentBlobUrl = '';
         let retryCount = 0;
         const MAX_RETRIES = 2;
+
+        function getToken() { return localStorage.getItem('hf_token') || ''; }
+        function setTokenStore(t) { localStorage.setItem('hf_token', t); }
+
+        // On load: open settings if no token
+        if (!getToken()) {
+            document.getElementById('settingsDetails').open = true;
+        } else {
+            document.getElementById('tokenInput').value = getToken();
+        }
+
+        function saveToken() {
+            const t = document.getElementById('tokenInput').value.trim();
+            if (!t.startsWith('hf_')) {
+                document.getElementById('tokenStatus').textContent = '❌ Token should start with hf_';
+                return;
+            }
+            setTokenStore(t);
+            document.getElementById('tokenStatus').textContent = '✅ Saved! You can generate now.';
+            setTimeout(() => { document.getElementById('settingsDetails').open = false; }, 1000);
+        }
 
         promptInput.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') generate();
@@ -456,6 +494,11 @@
         }
 
         function generate() {
+            if (!getToken()) {
+                document.getElementById('settingsDetails').open = true;
+                document.getElementById('tokenStatus').textContent = '⚠️ Please add your Hugging Face token first!';
+                return;
+            }
             const userPrompt = promptInput.value.trim();
             if (!userPrompt) {
                 promptInput.focus();
@@ -463,81 +506,72 @@
                 setTimeout(() => promptInput.style.borderColor = '', 1000);
                 return;
             }
-
             retryCount = 0;
             startGeneration(userPrompt);
         }
 
         function startGeneration(userPrompt) {
-            // Show loading
             generateBtn.disabled = true;
-            generateBtn.textContent = retryCount > 0 ? `⏳ Retrying (${retryCount})...` : '⏳ Generating...';
+            generateBtn.textContent = retryCount > 0 ? '⏳ Retrying (' + retryCount + ')...' : '⏳ Generating...';
             loading.classList.add('visible');
             result.classList.remove('visible');
             error.classList.remove('visible');
 
             const suffix = ', black and white line art coloring book page, simple bold outlines, no shading, white background, clean lines for coloring';
-            const fullPrompt = encodeURIComponent(userPrompt + suffix);
-            const seed = Math.floor(Math.random() * 100000);
-            const imageUrl = `https://image.pollinations.ai/prompt/${fullPrompt}?nologo=true&seed=${seed}`;
+            const fullPrompt = userPrompt + suffix;
 
-            currentImageUrl = imageUrl;
+            const controller = new AbortController();
+            const timeout = setTimeout(function() { controller.abort(); }, 120000);
 
-            // Load via img tag directly (most reliable for Pollinations)
-            const img = new Image();
-            let loaded = false;
-
-            // Timeout after 90 seconds
-            const timeoutId = setTimeout(() => {
-                if (loaded) return;
-                console.error('Timeout loading image');
-                if (retryCount < MAX_RETRIES) {
-                    retryCount++;
-                    setTimeout(() => startGeneration(userPrompt), 2000);
-                } else {
-                    loading.classList.remove('visible');
-                    error.classList.add('visible');
-                    generateBtn.disabled = false;
-                    generateBtn.textContent = '🪄 Generate Coloring Page';
+            fetch(HF_MODEL, {
+                method: 'POST',
+                headers: {
+                    'Authorization': 'Bearer ' + getToken(),
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    inputs: fullPrompt,
+                    parameters: { seed: Math.floor(Math.random() * 100000) }
+                }),
+                signal: controller.signal
+            })
+            .then(function(response) {
+                clearTimeout(timeout);
+                if (response.status === 401 || response.status === 403) {
+                    throw new Error('Invalid token — check your Hugging Face API key in Settings');
                 }
-            }, 90000);
-
-            img.onload = () => {
-                if (loaded) return;
-                loaded = true;
-                clearTimeout(timeoutId);
-                // Check if image actually has content (not 1x1 pixel)
-                if (img.naturalWidth < 10) {
-                    if (retryCount < MAX_RETRIES) {
-                        retryCount++;
-                        setTimeout(() => startGeneration(userPrompt), 2000);
-                    }
-                    return;
-                }
-                coloringImage.src = imageUrl;
+                if (!response.ok) throw new Error('HTTP ' + response.status);
+                return response.blob();
+            })
+            .then(function(blob) {
+                if (blob.size < 1000) throw new Error('Image too small');
+                if (currentBlobUrl) URL.revokeObjectURL(currentBlobUrl);
+                currentBlobUrl = URL.createObjectURL(blob);
+                coloringImage.src = currentBlobUrl;
                 loading.classList.remove('visible');
                 result.classList.add('visible');
                 generateBtn.disabled = false;
                 generateBtn.textContent = '🪄 Generate Coloring Page';
-            };
-
-            img.onerror = () => {
-                if (loaded) return;
-                loaded = true;
-                clearTimeout(timeoutId);
-                console.error('Image load error');
-                if (retryCount < MAX_RETRIES) {
+            })
+            .catch(function(err) {
+                clearTimeout(timeout);
+                console.error('Generation error:', err);
+                if (err.message.includes('token')) {
+                    loading.classList.remove('visible');
+                    document.getElementById('settingsDetails').open = true;
+                    document.getElementById('tokenStatus').textContent = '❌ ' + err.message;
+                    generateBtn.disabled = false;
+                    generateBtn.textContent = '🪄 Generate Coloring Page';
+                } else if (retryCount < MAX_RETRIES) {
                     retryCount++;
-                    setTimeout(() => startGeneration(userPrompt), 2000);
+                    setTimeout(function() { startGeneration(userPrompt); }, 3000);
                 } else {
                     loading.classList.remove('visible');
                     error.classList.add('visible');
                     generateBtn.disabled = false;
                     generateBtn.textContent = '🪄 Generate Coloring Page';
                 }
-            };
-
-            img.src = imageUrl;
+            });
         }
 
         function printImage() {
@@ -545,8 +579,12 @@
         }
 
         function downloadImage() {
-            // Open image in new tab for saving
-            window.open(currentImageUrl, '_blank');
+            if (currentBlobUrl) {
+                var link = document.createElement('a');
+                link.href = currentBlobUrl;
+                link.download = 'coloring-page.jpg';
+                link.click();
+            }
         }
     </script>
 </body>
