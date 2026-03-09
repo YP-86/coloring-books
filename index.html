@@ -418,7 +418,7 @@
         <div class="result-area" id="result">
             <div class="card">
                 <div class="image-container">
-                    <img id="coloringImage" alt="Your coloring page" crossorigin="anonymous">
+                    <img id="coloringImage" alt="Your coloring page">
                 </div>
                 <div class="action-buttons">
                     <button class="btn-action" onclick="printImage()">🖨️ Print</button>
@@ -442,6 +442,8 @@
         const coloringImage = document.getElementById('coloringImage');
 
         let currentImageUrl = '';
+        let retryCount = 0;
+        const MAX_RETRIES = 2;
 
         promptInput.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') generate();
@@ -462,9 +464,14 @@
                 return;
             }
 
+            retryCount = 0;
+            startGeneration(userPrompt);
+        }
+
+        function startGeneration(userPrompt) {
             // Show loading
             generateBtn.disabled = true;
-            generateBtn.textContent = '⏳ Generating...';
+            generateBtn.textContent = retryCount > 0 ? `⏳ Retrying (${retryCount})...` : '⏳ Generating...';
             loading.classList.add('visible');
             result.classList.remove('visible');
             error.classList.remove('visible');
@@ -476,22 +483,38 @@
 
             currentImageUrl = imageUrl;
 
-            const img = new Image();
-            img.crossOrigin = 'anonymous';
-            img.onload = () => {
-                coloringImage.src = imageUrl;
-                loading.classList.remove('visible');
-                result.classList.add('visible');
-                generateBtn.disabled = false;
-                generateBtn.textContent = '🪄 Generate Coloring Page';
-            };
-            img.onerror = () => {
-                loading.classList.remove('visible');
-                error.classList.add('visible');
-                generateBtn.disabled = false;
-                generateBtn.textContent = '🪄 Generate Coloring Page';
-            };
-            img.src = imageUrl;
+            // Use fetch to get the image as a blob (avoids CORS issues with img tag)
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 120000); // 2 min timeout
+
+            fetch(imageUrl, { signal: controller.signal })
+                .then(response => {
+                    clearTimeout(timeout);
+                    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                    return response.blob();
+                })
+                .then(blob => {
+                    if (blob.size === 0) throw new Error('Empty response');
+                    const objectUrl = URL.createObjectURL(blob);
+                    coloringImage.src = objectUrl;
+                    loading.classList.remove('visible');
+                    result.classList.add('visible');
+                    generateBtn.disabled = false;
+                    generateBtn.textContent = '🪄 Generate Coloring Page';
+                })
+                .catch(err => {
+                    clearTimeout(timeout);
+                    console.error('Generation error:', err);
+                    if (retryCount < MAX_RETRIES) {
+                        retryCount++;
+                        setTimeout(() => startGeneration(userPrompt), 2000);
+                    } else {
+                        loading.classList.remove('visible');
+                        error.classList.add('visible');
+                        generateBtn.disabled = false;
+                        generateBtn.textContent = '🪄 Generate Coloring Page';
+                    }
+                });
         }
 
         function printImage() {
@@ -500,21 +523,12 @@
 
         function downloadImage() {
             const link = document.createElement('a');
-            const canvas = document.createElement('canvas');
-            const ctx = canvas.getContext('2d');
-            const img = coloringImage;
-
-            canvas.width = img.naturalWidth;
-            canvas.height = img.naturalHeight;
-            ctx.drawImage(img, 0, 0);
-
-            try {
-                const dataUrl = canvas.toDataURL('image/png');
-                link.href = dataUrl;
-                link.download = 'coloring-page.png';
+            // If it's a blob URL, download directly
+            if (coloringImage.src.startsWith('blob:')) {
+                link.href = coloringImage.src;
+                link.download = 'coloring-page.jpg';
                 link.click();
-            } catch (e) {
-                // Fallback: open in new tab
+            } else {
                 window.open(currentImageUrl, '_blank');
             }
         }
