@@ -29,7 +29,6 @@ export async function generateImage(prompt, signal) {
   }
 
   const fullPrompt = prompt.trim() + COLORING_SUFFIX;
-  const seed = Math.floor(Math.random() * 100000);
 
   const response = await fetch(HF_MODEL_URL, {
     method: 'POST',
@@ -39,7 +38,6 @@ export async function generateImage(prompt, signal) {
     },
     body: JSON.stringify({
       inputs: fullPrompt,
-      parameters: { seed },
     }),
     signal,
   });
